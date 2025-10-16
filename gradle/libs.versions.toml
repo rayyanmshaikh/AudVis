@@ -11,6 +11,8 @@ kotlinxCoroutinesAndroid = "1.8.1"
 material = "1.13.0"
 
 [libraries]
+androidx-activity-ktx = { module = "androidx.activity:activity-ktx" }
+androidx-lifecycle-viewmodel-ktx = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }

@@ -39,6 +39,8 @@ dependencies {
 
     implementation("androidx.core:core:1.10.1")
     implementation("androidx.core:core-ktx:1.10.1")
+    implementation(libs.androidx.activity.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.material)
