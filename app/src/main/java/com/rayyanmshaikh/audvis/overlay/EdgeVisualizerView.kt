@@ -44,18 +44,20 @@ class EdgeVisualizerView @JvmOverloads constructor(
         path.reset()
 
         val step = h / (historySize - 1)
+        
+        //start from edge
+        path.moveTo(0f, 0f)
+        
         for (i in 0 until historySize) {
             val pos = (index + i) % historySize
             val amp = amplitudes[pos]
             val y = i * step
-            val inward = (amp.pow(0.6f)) * (w * 0.9f) // curve inward
+            val inward = (amp.pow(0.6f)) * (w * 0.9f) //curve in
 
-            if (i == 0) path.moveTo(w, 0f)
-
-            path.lineTo(w - inward, y)
+            path.lineTo(inward, y)
         }
 
-        path.lineTo(w, h)
+        path.lineTo(0f, h)
         path.close()
 
         // Color shift by latest amplitude (simple mapping blue -> magenta)
