@@ -92,7 +92,7 @@ class AudioEdgeOverlayService : Service() {
     }
 
     private fun fadeOutAndStop() {
-        captureJob?.cancel() // stop audio capture immediately
+        captureJob?.cancel()
 
         scope.launch(Dispatchers.Main) {
             val duration = 300L   // total fade duration in ms
@@ -101,12 +101,15 @@ class AudioEdgeOverlayService : Service() {
             var currentAmp = latestAmplitude.get()
 
             for (i in 0 until steps) {
-                currentAmp *= 0.7f // decay factor, adjust for smoothness
+                currentAmp *= 0.7f
                 latestAmplitude.set(currentAmp)
                 delay(delayPerStep)
             }
 
+            //Wait for visual to scroll off
             latestAmplitude.set(0f)
+            delay(1000L)
+
             removeOverlay()
             audioRecord?.release()
             mediaProjection?.stop()
