@@ -2,39 +2,27 @@ package com.rayyanmshaikh.audvis.overlay
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
+import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.PixelFormat
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioPlaybackCaptureConfiguration
-import android.media.AudioRecord
+import android.media.*
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
-import android.os.IBinder
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import com.rayyanmshaikh.audvis.MainActivity
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.sqrt
 
 
 class AudioEdgeOverlayService : Service() {
+
     companion object {
         private const val CHANNEL_ID = "audvis_overlay"
         private const val NOTIFICATION_ID = 1001
@@ -48,64 +36,47 @@ class AudioEdgeOverlayService : Service() {
          * Start the visualization
          */
         fun start(ctx: Context, resultCode: Int, data: Intent) {
-            val intent = Intent(ctx, AudioEdgeOverlayService::class.java).apply {
+            Intent(ctx, AudioEdgeOverlayService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_RESULT_CODE, resultCode)
                 putExtra(EXTRA_DATA_INTENT, data)
+
+            }.also {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(it)
+                else ctx.startService(it)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                ctx.startForegroundService(intent)
-            } else ctx.startService(intent)
         }
 
         /**
          * Stop the visualization
          */
         fun stop(ctx: Context) {
-            val intent = Intent(ctx, AudioEdgeOverlayService::class.java).apply { action = ACTION_STOP }
-            ctx.startService(intent)
+            Intent(ctx, AudioEdgeOverlayService::class.java).apply { action = ACTION_STOP }
+                .also { ctx.startService(it) }
         }
     }
 
-    private val scope = CoroutineScope(Dispatchers.Default + Job())
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var mediaProjection: MediaProjection? = null
     private var audioRecord: AudioRecord? = null
     private var captureJob: Job? = null
-    private lateinit var windowManager: WindowManager
-    private var visualizerView: EdgeVisualizerView? = null
     private val latestAmplitude = AtomicReference(0f)
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    private val windowManager by lazy { getSystemService(WindowManager::class.java) }
+    private var visualizerView: EdgeVisualizerView? = null
+
+    override fun onBind(intent: Intent?) = null
 
     override fun onCreate() {
         super.onCreate()
-
-        windowManager = getSystemService(WindowManager::class.java)
         startForeground(NOTIFICATION_ID, buildNotification())
         startRenderLoop()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> {
-                //Permission check only when starting capture
-                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                    stopSelf()
-                    return START_NOT_STICKY
-                }
-
-                val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
-                val data = intent.getParcelableExtra<Intent>(EXTRA_DATA_INTENT)
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && data != null) {
-                    val mpm = getSystemService(MediaProjectionManager::class.java)
-                    mediaProjection = mpm.getMediaProjection(code, data)
-                    startPlaybackCapture()
-                    attachOverlay()
-                }
-            }
-
-            ACTION_STOP -> stopSelf()
+            ACTION_START -> startCapture(intent)
+            ACTION_STOP -> fadeOutAndStop()
         }
 
         return START_STICKY
@@ -120,11 +91,51 @@ class AudioEdgeOverlayService : Service() {
         super.onDestroy()
     }
 
+    private fun fadeOutAndStop() {
+        captureJob?.cancel() // stop audio capture immediately
+
+        scope.launch(Dispatchers.Main) {
+            val duration = 300L   // total fade duration in ms
+            val steps = 15        // number of fade steps
+            val delayPerStep = duration / steps
+            var currentAmp = latestAmplitude.get()
+
+            for (i in 0 until steps) {
+                currentAmp *= 0.7f // decay factor, adjust for smoothness
+                latestAmplitude.set(currentAmp)
+                delay(delayPerStep)
+            }
+
+            latestAmplitude.set(0f)
+            removeOverlay()
+            audioRecord?.release()
+            mediaProjection?.stop()
+            stopSelf()
+        }
+    }
+
+    private fun startCapture(intent: Intent) {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            stopSelf()
+            return
+        }
+
+        val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
+        val data = intent.getParcelableExtra<Intent>(EXTRA_DATA_INTENT) ?: return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val mpm = getSystemService(MediaProjectionManager::class.java)
+            mediaProjection = mpm.getMediaProjection(code, data)
+            startPlaybackCapture()
+            attachOverlay()
+        }
+    }
+
     @SuppressLint("MissingPermission")
     private fun startPlaybackCapture() {
+        val proj = mediaProjection ?: return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
 
-        val proj = mediaProjection ?: return
         val config = AudioPlaybackCaptureConfiguration.Builder(proj)
             .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
             .addMatchingUsage(AudioAttributes.USAGE_GAME)
@@ -133,46 +144,31 @@ class AudioEdgeOverlayService : Service() {
         val sampleRate = 44100
         val channelConfig = AudioFormat.CHANNEL_IN_STEREO
         val encoding = AudioFormat.ENCODING_PCM_16BIT
-        val min = AudioRecord.getMinBufferSize(sampleRate, channelConfig, encoding)
+        val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, encoding) * 2
 
         //Permission checked in onStartCommand
         audioRecord = AudioRecord.Builder()
             .setAudioPlaybackCaptureConfig(config)
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setEncoding(encoding)
-                    .setChannelMask(channelConfig)
-                    .build()
-            ).setBufferSizeInBytes(min * 2)
+            .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate)
+                .setChannelMask(channelConfig)
+                .setEncoding(encoding).build())
+            .setBufferSizeInBytes(bufferSize)
             .build()
+            .apply { startRecording() }
 
-        audioRecord?.startRecording()
         captureJob = scope.launch {
-            val shortBuf = ShortArray(min / 2)
-            while (isActive) {
-                val read = audioRecord?.read(shortBuf, 0, shortBuf.size) ?: -1
+            val buffer = ShortArray(bufferSize / 4)
 
-                if (read > 0) {
-                    val amp = computeRms(shortBuf, read)
-                    latestAmplitude.set(amp)
-                }
+            while (isActive) {
+                val read = audioRecord?.read(buffer, 0, buffer.size) ?: -1
+                if (read > 0) latestAmplitude.set(computeRms(buffer, read))
             }
         }
     }
 
     private fun computeRms(data: ShortArray, size: Int): Float {
-        var sum = 0.0
-
-        for (i in 0 until size) {
-            val v = data[i].toInt()
-            sum += v * v
-        }
-
-        val mean = sum / size
-        val rms = sqrt(mean) / Short.MAX_VALUE
-
-        return rms.toFloat().coerceIn(0f, 1f)
+        val rms = sqrt(data.take(size).sumOf { (it.toInt() * it).toDouble() } / size)
+        return (rms / Short.MAX_VALUE).toFloat().coerceIn(0f, 1f)
     }
 
     private fun attachOverlay() {
@@ -184,11 +180,13 @@ class AudioEdgeOverlayService : Service() {
             EDGE_WIDTH_PX,
             WindowManager.LayoutParams.MATCH_PARENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
+
         ).apply {
             gravity = Gravity.START or Gravity.TOP
         }
@@ -197,10 +195,7 @@ class AudioEdgeOverlayService : Service() {
     }
 
     private fun removeOverlay() {
-        visualizerView?.let {
-            windowManager.removeView(it)
-        }
-
+        visualizerView?.let { windowManager.removeView(it) }
         visualizerView = null
     }
 
@@ -208,7 +203,7 @@ class AudioEdgeOverlayService : Service() {
         scope.launch(Dispatchers.Main) {
             while (isActive) {
                 visualizerView?.updateAmplitude(latestAmplitude.get())
-                kotlinx.coroutines.delay(16L)
+                delay(16L)
             }
         }
     }
@@ -216,15 +211,15 @@ class AudioEdgeOverlayService : Service() {
     private fun buildNotification(): Notification {
         ensureChannel()
 
-        val stopIntent = Intent(this, AudioEdgeOverlayService::class.java).apply { action = ACTION_STOP }
-        val stopPi = PendingIntent.getService(this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE)
-        val contentIntent = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val stopPi = PendingIntent.getService(this, 1, Intent(this, AudioEdgeOverlayService::class.java)
+            .setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
+        val contentPi = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Audio Edge Visualizer")
             .setContentText("Capturing output audio")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentIntent(contentIntent)
+            .setContentIntent(contentPi)
             .addAction(0, "Stop", stopPi)
             .setOngoing(true)
             .build()
