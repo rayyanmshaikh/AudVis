@@ -61,7 +61,7 @@ class MainActivity : AppCompatActivity() {
         }
 
     /**
-     * Activity lifecycle: sets up UI and button listeners.
+     * Sets up UI and button listeners.
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
 
         val btnStart = findViewById<Button>(R.id.btnStart)
         val btnStop = findViewById<Button>(R.id.btnStop)
+        val btnSettings = findViewById<Button>(R.id.btnSettings)
 
         viewModel.isVisualizerRunning.observe(this) { running ->
             btnStart.isEnabled = !running
@@ -87,13 +88,17 @@ class MainActivity : AppCompatActivity() {
             } else showToast("Visualizer is not running")
         }
 
+        btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
         //Sync initial state in case activity restarts while service is active
         viewModel.setRunning(AudioEdgeOverlayService.isRunning(this))
     }
 
     /**
-     * Checks all required permissions in order: microphone → overlay → media projection.
-     * Gracefully handles denial and continues flow when granted.
+     * Checks all required permissions
+     * Handles denial and continues flow when granted.
      */
     private fun checkAllPermissionsAndStart() {
         //Microphone permission

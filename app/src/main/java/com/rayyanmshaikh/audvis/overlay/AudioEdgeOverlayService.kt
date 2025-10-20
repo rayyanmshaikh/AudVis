@@ -63,7 +63,7 @@ class AudioEdgeOverlayService : Service() {
     private val latestAmplitude = AtomicReference(0f)
 
     private val windowManager by lazy { getSystemService(WindowManager::class.java) }
-    private var visualizerView: EdgeVisualizerView? = null
+    private val visualizerViews = mutableMapOf<String, EdgeVisualizerView>()
 
     override fun onBind(intent: Intent?) = null
 
@@ -174,38 +174,80 @@ class AudioEdgeOverlayService : Service() {
         return (rms / Short.MAX_VALUE).toFloat().coerceIn(0f, 1f)
     }
 
+    /**
+     * Attach overlay visualizers based on user preferences
+     */
     private fun attachOverlay() {
-        if (visualizerView != null) return
+        if (visualizerViews.isNotEmpty()) return
 
-        visualizerView = EdgeVisualizerView(this)
+        val config = com.rayyanmshaikh.audvis.VisualizerPreferences.loadEdgeConfig(this)
 
+        if (config.left)
+            attachEdgeOverlay("left", Gravity.START or Gravity.TOP, true, EdgeVisualizerView.Edge.LEFT)
+
+        if (config.right)
+            attachEdgeOverlay("right", Gravity.END or Gravity.TOP, true, EdgeVisualizerView.Edge.RIGHT)
+
+        if (config.top)
+            attachEdgeOverlay("top", Gravity.TOP or Gravity.START, false, EdgeVisualizerView.Edge.TOP)
+
+        if (config.bottom)
+            attachEdgeOverlay("bottom", Gravity.BOTTOM or Gravity.START, false, EdgeVisualizerView.Edge.BOTTOM)
+    }
+
+    /**
+     * Attach a single edge overlay
+     */
+    private fun attachEdgeOverlay(edge: String, gravity: Int, isVertical: Boolean, 
+                                   edgePosition: EdgeVisualizerView.Edge) {
+        val view = EdgeVisualizerView(this, isVertical = isVertical, edge = edgePosition)
+        
         val params = WindowManager.LayoutParams(
-            EDGE_WIDTH_PX,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            if (isVertical) EDGE_WIDTH_PX else WindowManager.LayoutParams.MATCH_PARENT,
+            if (isVertical) WindowManager.LayoutParams.MATCH_PARENT else EDGE_WIDTH_PX,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN,
             PixelFormat.TRANSLUCENT
 
         ).apply {
-            gravity = Gravity.START or Gravity.TOP
+            this.gravity = gravity
+            // Extend into system bars (status bar, navigation bar)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
 
-        windowManager.addView(visualizerView, params)
+        windowManager.addView(view, params)
+        visualizerViews[edge] = view
     }
 
+    /**
+     * Remove all overlay visualizers
+     */
     private fun removeOverlay() {
-        visualizerView?.let { windowManager.removeView(it) }
-        visualizerView = null
+        visualizerViews.values.forEach { view ->
+            windowManager.removeView(view)
+        }
+
+        visualizerViews.clear()
     }
 
+    /**
+     * Render loop updates all visualizer views
+     */
     private fun startRenderLoop() {
         scope.launch(Dispatchers.Main) {
             while (isActive) {
-                visualizerView?.updateAmplitude(latestAmplitude.get())
+                val amplitude = latestAmplitude.get()
+                visualizerViews.values.forEach { view ->
+                    view.updateAmplitude(amplitude)
+                }
                 delay(16L)
             }
         }
