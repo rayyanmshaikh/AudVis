@@ -93,23 +93,13 @@ class AudioEdgeOverlayService : Service() {
 
     private fun fadeOutAndStop() {
         captureJob?.cancel()
-
         scope.launch(Dispatchers.Main) {
-            val duration = 300L   // total fade duration in ms
-            val steps = 15        // number of fade steps
-            val delayPerStep = duration / steps
-            var currentAmp = latestAmplitude.get()
-
-            for (i in 0 until steps) {
-                currentAmp *= 0.7f
-                latestAmplitude.set(currentAmp)
-                delay(delayPerStep)
+            repeat(15) {
+                latestAmplitude.updateAndGet { it * 0.7f }
+                delay(20)
             }
-
-            //Wait for visual to scroll off
             latestAmplitude.set(0f)
-            delay(1000L)
-
+            delay(1000)
             removeOverlay()
             audioRecord?.release()
             mediaProjection?.stop()
@@ -127,8 +117,7 @@ class AudioEdgeOverlayService : Service() {
         val data = intent.getParcelableExtra<Intent>(EXTRA_DATA_INTENT) ?: return
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val mpm = getSystemService(MediaProjectionManager::class.java)
-            mediaProjection = mpm.getMediaProjection(code, data)
+            mediaProjection = getSystemService(MediaProjectionManager::class.java).getMediaProjection(code, data)
             startPlaybackCapture()
             attachOverlay()
         }
@@ -198,10 +187,10 @@ class AudioEdgeOverlayService : Service() {
     /**
      * Attach a single edge overlay
      */
-    private fun attachEdgeOverlay(edge: String, gravity: Int, isVertical: Boolean, 
+    private fun attachEdgeOverlay(edge: String, gravity: Int, isVertical: Boolean,
                                    edgePosition: EdgeVisualizerView.Edge) {
         val view = EdgeVisualizerView(this, isVertical = isVertical, edge = edgePosition)
-        
+
         val params = WindowManager.LayoutParams(
             if (isVertical) EDGE_WIDTH_PX else WindowManager.LayoutParams.MATCH_PARENT,
             if (isVertical) WindowManager.LayoutParams.MATCH_PARENT else EDGE_WIDTH_PX,
@@ -231,9 +220,7 @@ class AudioEdgeOverlayService : Service() {
      * Remove all overlay visualizers
      */
     private fun removeOverlay() {
-        visualizerViews.values.forEach { view ->
-            windowManager.removeView(view)
-        }
+        visualizerViews.values.forEach(windowManager::removeView)
 
         visualizerViews.clear()
     }
