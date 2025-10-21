@@ -26,7 +26,6 @@ class AudioEdgeOverlayService : Service() {
     companion object {
         private const val CHANNEL_ID = "audvis_overlay"
         private const val NOTIFICATION_ID = 1001
-        private const val EDGE_WIDTH_PX = 32
         private const val ACTION_START = "start"
         private const val ACTION_STOP = "stop"
         private const val EXTRA_RESULT_CODE = "resultCode"
@@ -189,11 +188,24 @@ class AudioEdgeOverlayService : Service() {
      */
     private fun attachEdgeOverlay(edge: String, gravity: Int, isVertical: Boolean,
                                    edgePosition: EdgeVisualizerView.Edge) {
-        val view = EdgeVisualizerView(this, isVertical = isVertical, edge = edgePosition)
+        // Resolve style
+        val style = com.rayyanmshaikh.audvis.VisualizerPreferences.loadStyle(this)
+        val strategy: com.rayyanmshaikh.audvis.overlay.visuals.VisualizationStrategy = when(style) {
+            com.rayyanmshaikh.audvis.VisualizerPreferences.Style.CURVE -> com.rayyanmshaikh.audvis.overlay.visuals.CurveStrategy()
+            com.rayyanmshaikh.audvis.VisualizerPreferences.Style.BARS -> com.rayyanmshaikh.audvis.overlay.visuals.BarsStrategy()
+            com.rayyanmshaikh.audvis.VisualizerPreferences.Style.DOTS -> com.rayyanmshaikh.audvis.overlay.visuals.DotsStrategy()
+        }
+
+        val view = EdgeVisualizerView(this, isVertical = isVertical, edge = edgePosition, strategy = strategy)
+
+        // Convert configured thickness dp to pixels
+        val thicknessDp = com.rayyanmshaikh.audvis.VisualizerPreferences.loadThicknessDp(this)
+        val density = resources.displayMetrics.density
+        val thicknessPx = (thicknessDp * density).toInt().coerceAtLeast(1)
 
         val params = WindowManager.LayoutParams(
-            if (isVertical) EDGE_WIDTH_PX else WindowManager.LayoutParams.MATCH_PARENT,
-            if (isVertical) WindowManager.LayoutParams.MATCH_PARENT else EDGE_WIDTH_PX,
+            if (isVertical) thicknessPx else WindowManager.LayoutParams.MATCH_PARENT,
+            if (isVertical) WindowManager.LayoutParams.MATCH_PARENT else thicknessPx,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
             else WindowManager.LayoutParams.TYPE_PHONE,

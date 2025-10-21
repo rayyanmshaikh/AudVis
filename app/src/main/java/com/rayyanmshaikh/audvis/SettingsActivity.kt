@@ -32,9 +32,9 @@ class SettingsActivity : AppCompatActivity() {
         cbRight = findViewById(R.id.cbEdgeRight)
         cbTop = findViewById(R.id.cbEdgeTop)
         cbBottom = findViewById(R.id.cbEdgeBottom)
-    spStyle = findViewById(R.id.spStyle)
-    seekThickness = findViewById(R.id.seekThickness)
-    tvThicknessValue = findViewById(R.id.tvThicknessValue)
+        spStyle = findViewById(R.id.spStyle)
+        seekThickness = findViewById(R.id.seekThickness)
+        tvThicknessValue = findViewById(R.id.tvThicknessValue)
 
         // Populate style spinner
         val styles = VisualizerPreferences.Style.entries.toTypedArray()
