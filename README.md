@@ -13,5 +13,6 @@ Android Kotlin app to dynamically visualize output audio from a device on the ed
 The app includes a Settings page accessible from the main screen where you can:
 
 - **Select Edges**: Choose which screen edges to display the visualizer (minimum 1, maximum 4)
+- **Visualization Type**: Choose from 3 different visualization options (curve, bars, dots)
 
 Settings are saved and will take effect the next time you start the visualizer.
