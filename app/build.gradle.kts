@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.rayyanmshaikh.audvis"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.rayyanmshaikh.audvis"
         minSdk = 24
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
@@ -37,9 +37,15 @@ android {
 
 dependencies {
 
-    implementation(libs.androidx.core.ktx)
+    implementation("androidx.core:core:1.10.1")
+    implementation("androidx.core:core-ktx:1.10.1")
+    implementation(libs.androidx.activity.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.constraintlayout)
     implementation(libs.material)
+    // Coroutines for background audio processing
+    implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
