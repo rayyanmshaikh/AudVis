@@ -30,6 +30,8 @@ class AudioEdgeOverlayService : Service() {
         private const val ACTION_STOP = "stop"
         private const val EXTRA_RESULT_CODE = "resultCode"
         private const val EXTRA_DATA_INTENT = "dataIntent"
+        const val ACTION_STATE = "com.rayyanmshaikh.audvis.VISUALIZER_STATE"
+        const val EXTRA_RUNNING = "running"
 
         /**
          * Start the visualization
@@ -70,6 +72,7 @@ class AudioEdgeOverlayService : Service() {
         super.onCreate()
         startForeground(NOTIFICATION_ID, buildNotification())
         startRenderLoop()
+        // Inform UI that service is starting; running will be true after overlay attached
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -87,6 +90,9 @@ class AudioEdgeOverlayService : Service() {
         mediaProjection?.stop()
         scope.cancel()
         removeOverlay()
+        // Broadcast stopped state for UI sync
+        com.rayyanmshaikh.audvis.VisualizerPreferences.saveRunning(this, false)
+        sendBroadcast(Intent(ACTION_STATE).putExtra(EXTRA_RUNNING, false))
         super.onDestroy()
     }
 
@@ -102,6 +108,9 @@ class AudioEdgeOverlayService : Service() {
             removeOverlay()
             audioRecord?.release()
             mediaProjection?.stop()
+            // Notify listeners that we're no longer running
+            com.rayyanmshaikh.audvis.VisualizerPreferences.saveRunning(this@AudioEdgeOverlayService, false)
+            sendBroadcast(Intent(ACTION_STATE).putExtra(EXTRA_RUNNING, false))
             stopSelf()
         }
     }
@@ -119,6 +128,9 @@ class AudioEdgeOverlayService : Service() {
             mediaProjection = getSystemService(MediaProjectionManager::class.java).getMediaProjection(code, data)
             startPlaybackCapture()
             attachOverlay()
+            // Notify listeners that visualization is running
+            com.rayyanmshaikh.audvis.VisualizerPreferences.saveRunning(this, true)
+            sendBroadcast(Intent(ACTION_STATE).putExtra(EXTRA_RUNNING, true))
         }
     }
 
@@ -255,19 +267,35 @@ class AudioEdgeOverlayService : Service() {
     private fun buildNotification(): Notification {
         ensureChannel()
 
-        val stopPi = PendingIntent.getService(this, 1, Intent(this, AudioEdgeOverlayService::class.java)
-            .setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE)
-        val contentPi = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val stopPi = PendingIntent.getService(
+            this, 1,
+            Intent(this, AudioEdgeOverlayService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val openPi = PendingIntent.getActivity(
+            this, 2,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Audio Edge Visualizer")
-            .setContentText("Capturing output audio")
+            .setContentText("Tap to open • Stop visualization anytime")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentIntent(contentPi)
-            .addAction(0, "Stop", stopPi)
+            .setContentIntent(openPi)
+            .addAction(android.R.drawable.ic_menu_view, "Open", openPi)
+            .addAction(android.R.drawable.ic_delete, "Stop", stopPi)
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                }
+            }
             .build()
     }
+
 
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

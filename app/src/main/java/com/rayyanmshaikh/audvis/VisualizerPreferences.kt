@@ -14,6 +14,7 @@ object VisualizerPreferences {
     private const val KEY_EDGE_BOTTOM = "edge_bottom"
     private const val KEY_STYLE = "style"
     private const val KEY_THICKNESS_DP = "thickness_dp"
+    private const val KEY_RUNNING = "running_state"
 
     // Thickness bounds in dp
     const val MIN_THICKNESS_DP = 12
@@ -92,5 +93,15 @@ object VisualizerPreferences {
     fun loadThicknessDp(context: Context): Int {
         return getPrefs(context).getInt(KEY_THICKNESS_DP, DEFAULT_THICKNESS_DP)
             .coerceIn(MIN_THICKNESS_DP, MAX_THICKNESS_DP)
+    }
+
+    /** Persist whether the visualizer service is running */
+    fun saveRunning(context: Context, running: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_RUNNING, running).apply()
+    }
+
+    /** Load running state with default false */
+    fun loadRunning(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_RUNNING, false)
     }
 }
