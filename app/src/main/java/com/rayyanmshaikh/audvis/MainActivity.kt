@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
+import android.media.projection.MediaProjectionConfig
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -34,7 +35,7 @@ class MainActivity : AppCompatActivity() {
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == AudioEdgeOverlayService.ACTION_STATE) {
-                val running = intent.getBooleanExtra(com.rayyanmshaikh.audvis.overlay.AudioEdgeOverlayService.EXTRA_RUNNING, false)
+                val running = intent.getBooleanExtra(AudioEdgeOverlayService.EXTRA_RUNNING, false)
                 viewModel.setRunning(running)
             }
         }
@@ -46,6 +47,12 @@ class MainActivity : AppCompatActivity() {
             if (granted) checkAllPermissionsAndStart() // continue flow once granted
             else showToast("Microphone permission is required.")
 
+        }
+
+    /** Launcher for notifications permission */
+    private val notificationsPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) checkAllPermissionsAndStart() else showToast("Notification permission is required to run the visualizer.")
         }
 
     /** Launcher for overlay permission */
@@ -127,6 +134,15 @@ class MainActivity : AppCompatActivity() {
      * Handles denial and continues flow when granted.
      */
     private fun checkAllPermissionsAndStart() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationsPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                return
+            }
+        }
+
         //Microphone permission
         if (ActivityCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
@@ -151,7 +167,11 @@ class MainActivity : AppCompatActivity() {
     private fun startMediaProjection() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val mpm = getSystemService(MediaProjectionManager::class.java)
-            mediaProjectionLauncher.launch(mpm.createScreenCaptureIntent())
+            if (Build.VERSION.SDK_INT >= 34) {
+                mediaProjectionLauncher.launch(mpm.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay()))
+            } else {
+                mediaProjectionLauncher.launch(mpm.createScreenCaptureIntent())
+            }
 
         } else showToast("Output audio capture requires Android 10+")
     }
