@@ -3,6 +3,8 @@ package com.rayyanmshaikh.audvis
 import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
@@ -29,6 +31,14 @@ class MainActivity : AppCompatActivity() {
 
     private val viewModel: MainViewModel by viewModels()
     private var toast: Toast? = null
+    private val stateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AudioEdgeOverlayService.ACTION_STATE) {
+                val running = intent.getBooleanExtra(com.rayyanmshaikh.audvis.overlay.AudioEdgeOverlayService.EXTRA_RUNNING, false)
+                viewModel.setRunning(running)
+            }
+        }
+    }
 
     /** Launcher for microphone permission */
     private val audioPermissionLauncher =
@@ -92,8 +102,24 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
-        //Sync initial state in case activity restarts while service is active
-        viewModel.setRunning(AudioEdgeOverlayService.isRunning(this))
+    // Sync initial state using persisted flag (fallback to service check)
+    val persistedRunning = VisualizerPreferences.loadRunning(this)
+    viewModel.setRunning(persistedRunning || AudioEdgeOverlayService.isRunning(this))
+    }
+
+    override fun onStart() {
+        super.onStart()
+        registerReceiver(stateReceiver, IntentFilter(AudioEdgeOverlayService.ACTION_STATE),
+            RECEIVER_NOT_EXPORTED
+        )
+    // Also resync state on foreground
+    val persistedRunning = VisualizerPreferences.loadRunning(this)
+    viewModel.setRunning(persistedRunning || AudioEdgeOverlayService.isRunning(this))
+    }
+
+    override fun onStop() {
+        super.onStop()
+        try { unregisterReceiver(stateReceiver) } catch (_: Exception) {}
     }
 
     /**
