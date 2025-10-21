@@ -12,6 +12,13 @@ object VisualizerPreferences {
     private const val KEY_EDGE_RIGHT = "edge_right"
     private const val KEY_EDGE_TOP = "edge_top"
     private const val KEY_EDGE_BOTTOM = "edge_bottom"
+    private const val KEY_STYLE = "style"
+    private const val KEY_THICKNESS_DP = "thickness_dp"
+
+    // Thickness bounds in dp
+    const val MIN_THICKNESS_DP = 12
+    const val MAX_THICKNESS_DP = 96
+    private const val DEFAULT_THICKNESS_DP = 32
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -64,5 +71,26 @@ object VisualizerPreferences {
             top = prefs.getBoolean(KEY_EDGE_TOP, false),
             bottom = prefs.getBoolean(KEY_EDGE_BOTTOM, false)
         ).withAtLeastOneEdge()
+    }
+
+    enum class Style { CURVE, BARS, DOTS }
+
+    fun saveStyle(context: Context, style: Style) {
+        getPrefs(context).edit().putString(KEY_STYLE, style.name).apply()
+    }
+
+    fun loadStyle(context: Context): Style {
+        val name = getPrefs(context).getString(KEY_STYLE, Style.CURVE.name)
+        return runCatching { Style.valueOf(name!!) }.getOrDefault(Style.CURVE)
+    }
+
+    fun saveThicknessDp(context: Context, dp: Int) {
+        val clamped = dp.coerceIn(MIN_THICKNESS_DP, MAX_THICKNESS_DP)
+        getPrefs(context).edit().putInt(KEY_THICKNESS_DP, clamped).apply()
+    }
+
+    fun loadThicknessDp(context: Context): Int {
+        return getPrefs(context).getInt(KEY_THICKNESS_DP, DEFAULT_THICKNESS_DP)
+            .coerceIn(MIN_THICKNESS_DP, MAX_THICKNESS_DP)
     }
 }
