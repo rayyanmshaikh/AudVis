@@ -16,3 +16,9 @@ The app includes a Settings page accessible from the main screen where you can:
 - **Visualization Type**: Choose from 3 different visualization options (curve, bars, dots)
 
 Settings are saved and will take effect the next time you start the visualizer.
+
+## Example
+
+
+https://github.com/user-attachments/assets/418c6e13-4a1e-4a3f-9b5f-af5ec8f0da30
+
